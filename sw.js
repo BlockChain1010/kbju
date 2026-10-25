@@ -1,5 +1,5 @@
 // Кэш оболочки приложения, чтобы оно открывалось быстро и без сети.
-const CACHE = "kbju-v3";
+const CACHE = "kbju-v4";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {

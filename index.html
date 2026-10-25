@@ -54,8 +54,8 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;padding-block:
 .datenav button:disabled{opacity:.3;cursor:default}
 .datenav span{min-width:84px;text-align:center;font-weight:600;font-size:14px}
 .icon-btn{border:0;background:var(--surface);width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--muted);box-shadow:0 1px 0 var(--line)}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:12px;background:var(--surface2);border-radius:999px;padding:4px}
-.tabs button{border:0;background:none;border-radius:999px;padding:8px 4px;font-size:14px;font-weight:600;color:var(--muted);transition:background .25s,color .25s}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-top:12px;background:var(--surface2);border-radius:999px;padding:4px}
+.tabs button{border:0;background:none;border-radius:999px;padding:8px 2px;font-size:13.5px;font-weight:600;color:var(--muted);transition:background .25s,color .25s}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 2px 8px var(--glow)}
 
 .view{animation:rise .35s ease both}
@@ -185,6 +185,7 @@ details summary{cursor:pointer;color:var(--accent);font-weight:700;font-size:14.
       <button role="tab" data-tab="week" aria-selected="false">Неделя</button>
       <button role="tab" data-tab="weight" aria-selected="false">Вес</button>
       <button role="tab" data-tab="recipes" aria-selected="false">Кухня</button>
+      <button role="tab" data-tab="sport" aria-selected="false">Спорт</button>
     </nav>
   </header>
   <main id="view"></main>
@@ -242,7 +243,7 @@ function totals(list){return list.reduce((t,e)=>{const v=calc(e.per100,e.grams);
 function header(){
   const h=new Date().getHours();
   $("#greetSmall").textContent=h<5?"Доброй ночи":h<12?"Доброе утро":h<18?"Добрый день":"Добрый вечер";
-  $("#greetBig").textContent={day:"Дневник",week:"Неделя",weight:"Вес",recipes:"Кухня"}[S.tab];
+  $("#greetBig").textContent={day:"Дневник",week:"Неделя",weight:"Вес",recipes:"Кухня",sport:"Спорт"}[S.tab];
   const today=ds(new Date()),y=addDays(today,-1);
   $("#dateNav").hidden=!(S.tab==="day"||S.tab==="week");
   $("#dateLabel").textContent=S.tab==="week"?`до ${S.date===today?"сегодня":shortDate(S.date)}`:
@@ -251,7 +252,7 @@ function header(){
   document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===S.tab));
   $("#dock").hidden=S.tab!=="day";
 }
-function render(){header();({day:renderDay,week:renderWeek,weight:renderWeight,recipes:renderRecipes})[S.tab]()}
+function render(){header();({day:renderDay,week:renderWeek,weight:renderWeight,recipes:renderRecipes,sport:renderSport})[S.tab]()}
 function setView(html){const v=$("#view");v.innerHTML=`<div class="view">${html}</div>`}
 
 /* ---------- День ---------- */
@@ -267,6 +268,8 @@ function renderDay(){
       <div class="center"><div class="big num">${fmt(t.k)}</div><div class="small">из ${fmt(g.goal)} ккал</div></div></div>
     <div class="macros">${macro("Белки",t.p,g.p,"--prot")}${macro("Жиры",t.f,g.f,"--fat")}${macro("Углеводы",t.c,g.c,"--carb")}</div>
     <div class="left-line ${over?"over":""}"><span>${over?"Сверх нормы":"Осталось на сегодня"}</span><b class="num">${fmt(Math.abs(g.goal-t.k))} ккал</b></div></section>
+  ${!S.settings.profile?`<div class="hint" style="margin-top:14px"><b>Рассчитай свою норму.</b> Учтём пол, возраст, рост, вес, активность и темп похудения — цифры выше подстроятся сами.<div style="margin-top:10px"><button class="btn small primary" data-act="norm">Рассчитать норму</button></div></div>`:""}
+  ${S.day.entries.length?`<button class="btn" data-act="review-day" style="width:100%;margin-top:12px">${S.date===ds(new Date())?"Разбор дня: что поправить":"Разбор этого дня"}</button>`:""}
   ${MEALS.map(([id,name])=>{const list=S.day.entries.filter(e=>e.meal===id);
     return `<div class="sec-title">${name}<span class="sum num">${list.length?fmt(totals(list).k)+" ккал":""}</span><button class="plus" data-addmeal="${id}" aria-label="Добавить в ${name.toLowerCase()}">+</button></div>
     ${list.length?`<div class="list">${list.map(e=>{const v=calc(e.per100,e.grams);return `<button class="entry" data-entry="${e.id}"><div class="nm"><div>${esc(e.name)}</div>
@@ -296,7 +299,8 @@ function renderWeek(){
       <line x1="0" x2="${W}" y1="${gy}" y2="${gy}" stroke="var(--accent)" stroke-dasharray="4 5" stroke-width="1.5"/>${bars}</svg></div>
       <div class="legend"><span><i style="background:var(--accent)"></i>цель ${fmt(g.goal)} ккал</span><span><i style="background:var(--accent2)"></i>в норме</span><span><i style="background:var(--carb)"></i>выше цели</span></div>
       <div class="small-note" style="margin-top:6px">Нажми на столбик, чтобы открыть этот день.</div></div>
-    <div class="hint" style="margin-top:14px">${!filled.length?"За эти 7 дней записей нет.":avg("k")<=g.goal?`<b>Неделя в норме.</b> В среднем ты на ${fmt(g.goal-avg("k"))} ккал ниже цели.`:`<b>Чуть выше цели.</b> В среднем на ${fmt(avg("k")-g.goal)} ккал в день. Один день ничего не решает — смотри на среднее.`} Среднее считается по дням с записями${done.length&&done.length<any.length?", без сегодняшнего — он ещё не закончился":""}.</div>`);
+    <div class="hint" style="margin-top:14px">${!filled.length?"За эти 7 дней записей нет.":avg("k")<=g.goal?`<b>Неделя в норме.</b> В среднем ты на ${fmt(g.goal-avg("k"))} ккал ниже цели.`:`<b>Чуть выше цели.</b> В среднем на ${fmt(avg("k")-g.goal)} ккал в день. Один день ничего не решает — смотри на среднее.`} Среднее считается по дням с записями${done.length&&done.length<any.length?", без сегодняшнего — он ещё не закончился":""}.</div>
+    ${any.length?`<button class="btn primary" data-act="review-week" style="width:100%;margin-top:12px">Разбор недели от нейросети</button>`:""}`);
   $("#view").querySelectorAll("[data-goday]").forEach(el=>el.addEventListener("click",()=>{S.date=el.dataset.goday;S.tab="day";loadDay()}));
 }
 
@@ -337,7 +341,7 @@ function renderWeight(){
     <div class="card" style="margin-top:12px">${chart}</div>
     ${dates.length?`<div class="sec-title">Записи</div><div class="list">${dates.slice(-10).reverse().map(d=>`<div class="ing"><span>${shortDate(d)}</span><b class="num">${fmt1(w[d])} кг</b><button data-wdel="${d}" aria-label="Удалить запись">×</button></div>`).join("")}</div>`:""}`);
   $("#wSave").addEventListener("click",()=>{const v=num($("#wIn").value);if(v<20||v>400){toast("Впиши вес в килограммах");return}
-    const ww=getWeights();ww[today]=r1(v);saveWeights(ww);toast("Вес записан");render()});
+    const ww=getWeights();ww[today]=r1(v);saveWeights(ww);const nn=applyAutoNorm();toast(nn?`Вес записан. Новая норма: ${fmt(nn)} ккал`:"Вес записан");render()});
   $("#view").querySelectorAll("[data-wdel]").forEach(b=>b.addEventListener("click",()=>{const ww=getWeights();delete ww[b.dataset.wdel];saveWeights(ww);render()}));
 }
 
@@ -529,6 +533,184 @@ function openRecipeUse(id,meal){
   $("#ruAdd").addEventListener("click",()=>{const g=num($("#ruG").value);if(!g){toast("Укажи вес порции");return}
     const all=getRecipes(),x=all.find(y=>y.id===id);if(x){x.lastPortion=r0(g);saveRecipes(all)}
     if(S.tab!=="day"){S.tab="day"}addEntries(st.meal,[{name:r.name,grams:g,per100:p}])});
+}
+
+/* ---------- Норма калорий ---------- */
+const ACT=[[1.2,"Сидячий","Работа за компьютером, почти без спорта"],[1.375,"Лёгкая","Прогулки или 1–3 тренировки в неделю"],[1.55,"Средняя","3–5 тренировок в неделю"],[1.725,"Высокая","6–7 тренировок или работа на ногах"],[1.9,"Очень высокая","Физический труд плюс спорт"]];
+const SPEED={slow:{pct:.10,gain:.05,name:"Медленно",about:"Легко держать, почти без голода"},mid:{pct:.18,gain:.10,name:"Умеренно",about:"Оптимальный темп для большинства"},fast:{pct:.25,gain:.15,name:"Быстро",about:"Нужна дисциплина, следи за самочувствием"}};
+function latestWeight(){const w=getWeights(),d=Object.keys(w).sort();return d.length?w[d[d.length-1]]:null}
+function computeNorm(pr,weight,goalW){
+  if(!pr||!pr.sex||!pr.year||!pr.height||!weight)return null;
+  const age=new Date().getFullYear()-pr.year;if(age<14||age>100||pr.height<120||pr.height>230||weight<35)return null;
+  const bmr=10*weight+6.25*pr.height-5*age+(pr.sex==="m"?5:-161), tdee=bmr*(pr.act||1.2), sp=SPEED[pr.speed||"mid"];
+  let target=tdee, floored=false;
+  if(pr.goal==="lose"){target=tdee*(1-sp.pct);const maxDef=weight*11;if(tdee-target>maxDef)target=tdee-maxDef;
+    const floor=Math.max(pr.sex==="m"?1500:1200,bmr);if(target<floor){target=floor;floored=true}}
+  else if(pr.goal==="gain")target=tdee*(1+sp.gain);
+  target=Math.round(target/10)*10;
+  const ref=pr.goal==="lose"&&goalW&&goalW<weight?(weight+goalW)/2:weight;
+  const p=r0(ref*(pr.goal==="lose"?1.8:1.6)), f=r0(Math.max(ref*0.8,target*0.25/9)), c=Math.max(0,r0((target-p*4-f*9)/4));
+  const diff=tdee-target, pace=diff*7/7700;
+  let weeks=null;if(goalW&&pr.goal==="lose"&&goalW<weight&&pace>0)weeks=Math.ceil((weight-goalW)/pace);
+  if(goalW&&pr.goal==="gain"&&goalW>weight&&pace<0)weeks=Math.ceil((goalW-weight)/-pace);
+  return{bmr:r0(bmr),tdee:r0(tdee),target,p,f,c,diff:r0(diff),pace,floored,weeks,age}
+}
+function applyAutoNorm(){const pr=S.settings.profile;if(!pr?.auto)return false;
+  const n=computeNorm(pr,latestWeight()||pr.weight,S.settings.goalW);if(!n)return false;
+  const changed=n.target!==S.settings.goal;Object.assign(S.settings,{goal:n.target,p:n.p,f:n.f,c:n.c});saveSettings();return changed?n.target:false}
+function openNorm(){
+  const pr={sex:"m",year:null,height:null,act:1.375,goal:"lose",speed:"mid",auto:true,...(S.settings.profile||{})};
+  const w0=latestWeight()||pr.weight||"";
+  const chip=(grp,val,label,cur)=>`<button class="chip" data-${grp}="${val}" aria-pressed="${String(val)===String(cur)}">${label}</button>`;
+  openSheet(`<h3>Моя норма<button class="x" aria-label="Закрыть">×</button></h3><div class="stack">
+    <div class="chips" role="group" aria-label="Пол">${chip("sex","m","Мужчина",pr.sex)}${chip("sex","f","Женщина",pr.sex)}</div>
+    <div class="grid3"><label class="field">Год рождения<input type="number" inputmode="numeric" id="nmYear" value="${pr.year??""}" placeholder="2002"></label>
+      <label class="field">Рост, см<input type="number" inputmode="numeric" id="nmH" value="${pr.height??""}" placeholder="180"></label>
+      <label class="field">Вес сейчас, кг<input type="number" inputmode="decimal" step="0.1" id="nmW" value="${w0}" placeholder="85"></label></div>
+    <div class="small-note">Активность</div>
+    <div class="list">${ACT.map(([v,n,a])=>`<label class="ing" style="cursor:pointer"><input type="radio" name="nmAct" value="${v}" ${v===pr.act?"checked":""} style="accent-color:var(--accent);width:18px;height:18px"><span><b style="font-weight:600">${n}</b> <small>· ${a}</small></span></label>`).join("")}</div>
+    <div class="small-note">Цель</div>
+    <div class="chips" role="group" aria-label="Цель">${chip("goal","lose","Похудеть",pr.goal)}${chip("goal","keep","Держать вес",pr.goal)}${chip("goal","gain","Набрать",pr.goal)}</div>
+    <div id="nmSpeedBox"><div class="small-note" style="margin-bottom:6px">Темп</div>
+      <div class="chips" role="group" aria-label="Темп">${Object.entries(SPEED).map(([k,v])=>chip("speed",k,v.name,pr.speed)).join("")}</div>
+      <div class="small-note" id="nmSpeedAbout" style="margin-top:6px"></div></div>
+    <label class="field">Цель по весу, кг (необязательно)<input type="number" inputmode="decimal" step="0.1" id="nmGW" value="${S.settings.goalW??""}"></label>
+    <div class="prodcard num" id="nmRes"></div>
+    <label class="ing" style="padding:4px 2px;border:0;cursor:pointer"><input type="checkbox" id="nmAuto" ${pr.auto?"checked":""} style="accent-color:var(--accent);width:19px;height:19px"><span style="white-space:normal">Пересчитывать норму сама, когда записываю новый вес</span></label>
+    <button class="btn primary" id="nmSave">Применить</button>
+    <div class="small-note">Расчёт по формуле Миффлина — Сан Жеора, это оценка. Если вес две-три недели стоит на месте — пересчитай активность или выбери темп помедленнее. При болезнях и беременности норму лучше обсудить с врачом.</div></div>`);
+  const st={...pr};
+  const pick=grp=>$("#sheet").querySelectorAll(`[data-${grp}]`).forEach(b=>b.addEventListener("click",()=>{st[grp]=b.dataset[grp];$("#sheet").querySelectorAll(`[data-${grp}]`).forEach(x=>x.setAttribute("aria-pressed",x===b));upd()}));
+  ["sex","goal","speed"].forEach(pick);
+  const read=()=>({...st,year:r0(num($("#nmYear").value))||null,height:r0(num($("#nmH").value))||null,act:+($("#sheet").querySelector('[name=nmAct]:checked')?.value||1.375),auto:$("#nmAuto").checked,weight:num($("#nmW").value)||null});
+  function upd(){const p=read(),gw=num($("#nmGW").value)||null;$("#nmSpeedBox").hidden=p.goal==="keep";
+    $("#nmSpeedAbout").textContent=SPEED[p.speed||"mid"].about;
+    const n=computeNorm(p,p.weight,gw);
+    if(!n){$("#nmRes").innerHTML="Заполни пол, год рождения, рост и вес — здесь появится твоя норма.";return}
+    const paceTxt=p.goal==="keep"?"Вес будет держаться примерно на месте":p.goal==="lose"?`Дефицит ${fmt(n.diff)} ккал ≈ ${fmt1(n.pace)} кг в неделю`:`Профицит ${fmt(-n.diff)} ккал ≈ ${fmt1(-n.pace)} кг в неделю`;
+    const eta=n.weeks?(()=>{const d=new Date();d.setDate(d.getDate()+n.weeks*7);return `<br>До цели ≈ ${n.weeks} нед., примерно к ${d.toLocaleDateString("ru-RU",{day:"numeric",month:"long"})}`})():"";
+    $("#nmRes").innerHTML=`Норма: <b>${fmt(n.target)} ккал</b> · Б ${n.p} · Ж ${n.f} · У ${n.c}<br><span class="small-note">Обмен в покое ${fmt(n.bmr)}, с активностью ${fmt(n.tdee)} ккал. ${paceTxt}.${eta}${n.floored?"<br>Норма поднята до безопасного минимума — ниже есть нельзя, иначе уйдут мышцы и сила.":""}</span>`}
+  ["#nmYear","#nmH","#nmW","#nmGW"].forEach(s=>$(s).addEventListener("input",upd));$("#sheet").querySelectorAll("[name=nmAct]").forEach(r=>r.addEventListener("change",upd));upd();
+  $("#nmSave").addEventListener("click",()=>{const p=read(),gw=num($("#nmGW").value)||null,n=computeNorm(p,p.weight,gw);
+    if(!n){toast("Заполни пол, год рождения, рост и вес");return}
+    const today=ds(new Date()),ww=getWeights();if(p.weight&&ww[today]!==r1(p.weight)&&p.weight!==latestWeight()){ww[today]=r1(p.weight);saveWeights(ww)}
+    S.settings.profile=p;S.settings.goalW=gw;Object.assign(S.settings,{goal:n.target,p:n.p,f:n.f,c:n.c});saveSettings();closeSheet();render();toast(`Норма: ${fmt(n.target)} ккал в день`)});
+}
+
+/* ---------- Разбор рациона ---------- */
+function reviewData(scope){
+  const g=S.settings,goals={kcal:g.goal,protein:g.p,fat:g.f,carbs:g.c};
+  const pack=e=>{const v=calc(e.per100,e.grams);return{meal:MEAL_NAME[e.meal],name:e.name,g:e.grams,kcal:r0(v.k),p:r1(v.p),f:r1(v.f),c:r1(v.c)}};
+  const tot=list=>{const t=totals(list);return{kcal:r0(t.k),p:r0(t.p),f:r0(t.f),c:r0(t.c)}};
+  if(scope==="day"){const list=getDay(S.date).entries;return{n:list.length,data:{goals,totals:tot(list),foods:list.map(pack)}}}
+  const days=[...Array(7)].map((_,i)=>addDays(S.date,i-6)).map(d=>({d,list:getDay(d).entries}));
+  const foods={};days.forEach(x=>x.list.forEach(e=>{const k=e.name.toLowerCase();foods[k]=foods[k]||{name:e.name,times:0,kcal:0};foods[k].times++;foods[k].kcal+=calc(e.per100,e.grams).k}));
+  return{n:days.filter(x=>x.list.length).length,data:{goals,days:days.map(x=>({date:x.d,records:x.list.length,...tot(x.list)})),
+    topFoods:Object.values(foods).sort((a,b)=>b.kcal-a.kcal).slice(0,15).map(f=>({name:f.name,times:f.times,kcal:r0(f.kcal)}))}};
+}
+function openReview(scope){
+  const {n,data}=reviewData(scope), isToday=scope==="day"&&S.date===ds(new Date());
+  const sig=JSON.stringify(data), key=`review-${scope}-${S.date}`, cached=store.get(key);
+  const title=scope==="day"?(isToday?"Разбор дня":`Разбор за ${shortDate(S.date)}`):"Разбор недели";
+  openSheet(`<h3>${title}<button class="x" aria-label="Закрыть">×</button></h3><div class="stack"><div class="status" id="rvSt" hidden></div><div id="rvBox" class="stack"></div>
+    <button class="btn" id="rvAgain" hidden>Разобрать заново</button>
+    <div class="small-note">Это советы нейросети, а не врача. Ориентируйся на самочувствие.</div></div>`);
+  const show=rv=>{const sec=(t,arr,col)=>arr?.length?`<div><div class="sec-title" style="margin:2px 2px 8px;color:${col}">${t}</div><div class="list">${arr.map(x=>`<div class="ing" style="align-items:flex-start"><span style="white-space:normal">${esc(x)}</span></div>`).join("")}</div></div>`:"";
+    $("#rvBox").innerHTML=`${rv.verdict?`<div class="prodcard">${esc(rv.verdict)}</div>`:""}${sec("Получается хорошо",rv.good,"var(--accent)")}${sec("Что поправить",rv.fix,"var(--carb)")}${sec(scope==="week"?"На следующую неделю":isToday?"До конца дня":"На завтра",rv.next,"var(--ink)")}`;
+    $("#rvAgain").hidden=false};
+  const run=async()=>{kitchenCtl?.abort();kitchenCtl=new AbortController();$("#rvAgain").hidden=true;$("#rvBox").innerHTML="";
+    setStatus($("#rvSt"),"busy","Смотрю на твой рацион… 5–15 секунд");
+    try{const j=await ask({mode:"review",scope,isToday,hour:new Date().getHours(),data},kitchenCtl.signal);
+      if(!j.review||(!j.review.verdict&&!j.review.fix.length)){setStatus($("#rvSt"),"err","Разбор не получился. Попробуй ещё раз.");$("#rvAgain").hidden=false;return}
+      setStatus($("#rvSt"),"","");store.set(key,{sig,review:j.review});show(j.review)}
+    catch(e){if(e.name!=="AbortError"){setStatus($("#rvSt"),"err",e.message);$("#rvAgain").hidden=false}}};
+  $("#rvAgain").addEventListener("click",run);
+  if(!n){setStatus($("#rvSt"),"err",scope==="day"?"За этот день записей нет — разбирать пока нечего.":"За эти 7 дней записей нет.");return}
+  cached&&cached.sig===sig?show(cached.review):run();
+}
+
+/* ---------- Спорт ---------- */
+const getProgram=()=>store.get("workout");
+const getWLog=()=>store.get("wlog")||[];
+const SW={stage:null,place:null,questions:null,fallback:false};
+const FALLBACK_Q={
+  common:[{q:"Какой у тебя уровень подготовки?",options:["Новичок","Занимаюсь до года","Больше года"],multi:false},
+    {q:"Сколько дней в неделю готов заниматься?",options:["2","3","4","5"],multi:false},
+    {q:"Сколько времени на одну тренировку?",options:["30–45 минут","45–60 минут","60–90 минут"],multi:false},
+    {q:"Главная цель?",options:["Похудеть","Подтянуть тело","Набрать мышцы","Стать сильнее","Общая форма"],multi:false},
+    {q:"Есть травмы или ограничения?",options:["Нет","Спина","Колени","Плечи","Другое"],multi:true}],
+  home:{q:"Какой инвентарь есть дома?",options:["Ничего","Гантели","Резинки","Турник","Гиря","Коврик"],multi:true}};
+function profileForAI(){const pr=S.settings.profile||{},w=latestWeight()||pr.weight;
+  return{sex:pr.sex,age:pr.year?new Date().getFullYear()-pr.year:null,height:pr.height,weight:w,goal:{lose:"похудение",keep:"удержание веса",gain:"набор"}[pr.goal]}}
+function renderSport(){
+  const prog=getProgram();
+  if(SW.stage==="questions")return renderQuestions();
+  if(!prog||SW.stage==="place")return renderPlace(!!prog);
+  const log=getWLog(), weekAgo=addDays(ds(new Date()),-6), thisWeek=log.filter(x=>x.date>=weekAgo).length;
+  const lastDone=i=>{const l=log.filter(x=>x.day===i).map(x=>x.date).sort().pop();return l?`последний раз ${shortDate(l)}`:"ещё не было"};
+  setView(`<section class="card stack"><div class="small-note">${prog.place==="home"?"Дома":"В зале"} · ${prog.daysPerWeek} трен. в неделю</div>
+      <div style="font:700 19px/1.3 var(--display)">${esc(prog.name)}</div>
+      <div class="left-line"><span>За последние 7 дней</span><b class="num">${thisWeek} из ${prog.daysPerWeek}</b></div></section>
+    <div class="sec-title">Тренировки</div>
+    <div class="list">${prog.days.map((d,i)=>`<button class="entry" data-wday="${i}"><div class="nm"><div>${esc(d.title)}</div><small>${d.exercises.length} упражн. · ${lastDone(i)}</small></div><div class="kc" style="color:var(--accent)">›</div></button>`).join("")}</div>
+    ${prog.warmup?`<div class="sec-title">Разминка</div><div class="card" style="padding:14px 16px">${esc(prog.warmup)}</div>`:""}
+    ${prog.progression?`<div class="sec-title">Как прогрессировать</div><div class="card" style="padding:14px 16px">${esc(prog.progression)}</div>`:""}
+    ${prog.notes?.length?`<div class="sec-title">Советы</div><div class="list">${prog.notes.map(x=>`<div class="ing"><span style="white-space:normal">${esc(x)}</span></div>`).join("")}</div>`:""}
+    <button class="btn" id="spNew" style="width:100%;margin-top:16px">Составить новую программу</button>
+    <div class="small-note" style="margin-top:10px">Если есть травмы или хронические болезни — сначала покажи программу врачу. Боль в суставах — повод остановиться.</div>`);
+  $("#view").querySelectorAll("[data-wday]").forEach(b=>b.addEventListener("click",()=>openWorkoutDay(+b.dataset.wday)));
+  $("#spNew").addEventListener("click",()=>{SW.stage="place";render();window.scrollTo({top:0})});
+}
+function renderPlace(hasProg){
+  const ico={gym:`<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 7v10M18 7v10M3 9.5v5M21 9.5v5M6 12h12"/></svg>`,
+    home:`<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 11l8-6 8 6v8H4z"/><path d="M10 19v-5h4v5"/></svg>`};
+  setView(`<section class="card stack"><div style="font:700 19px/1.3 var(--display)">Программа тренировок</div>
+      <div class="small-note">Выбери, где будешь заниматься. Нейросеть задаст несколько вопросов и составит программу под тебя.</div>
+      <div class="grid2" style="grid-template-columns:1fr 1fr">${[["gym","В зале","Тренажёры и свободные веса"],["home","Дома","Свой вес и что есть под рукой"]].map(([k,t,a])=>`<button class="btn" data-place="${k}" style="flex-direction:column;padding:20px 12px;gap:6px">${ico[k]}<span>${t}</span><small style="font-weight:400;color:var(--muted)">${a}</small></button>`).join("")}</div>
+      <div class="status" id="plSt" hidden></div>
+      ${hasProg?`<button class="btn small" id="plCancel" style="justify-self:start">Отмена, оставить текущую</button>`:""}</section>`);
+  $("#plCancel")?.addEventListener("click",()=>{SW.stage=null;render()});
+  $("#view").querySelectorAll("[data-place]").forEach(b=>b.addEventListener("click",async()=>{
+    SW.place=b.dataset.place;$("#view").querySelectorAll("[data-place]").forEach(x=>x.disabled=true);
+    kitchenCtl?.abort();kitchenCtl=new AbortController();setStatus($("#plSt"),"busy","Готовлю вопросы…");
+    let qs=null;try{const j=await ask({mode:"wq",place:SW.place,profile:profileForAI()},kitchenCtl.signal);qs=j.questions?.length?j.questions:null}catch(e){if(e.name==="AbortError")return;if(/код доступа/i.test(e.message)){setStatus($("#plSt"),"err",e.message);$("#view").querySelectorAll("[data-place]").forEach(x=>x.disabled=false);return}}
+    SW.fallback=!qs;SW.questions=(qs||[...FALLBACK_Q.common,...(SW.place==="home"?[FALLBACK_Q.home]:[])]).map(q=>({...q,picked:[]}));
+    SW.stage="questions";render()}));
+}
+function renderQuestions(){
+  setView(`<section class="card stack"><div style="font:700 19px/1.3 var(--display)">Пара вопросов</div>
+      <div class="small-note">${SW.place==="home"?"Тренировки дома":"Тренировки в зале"}${SW.fallback?" · нейросеть сейчас недоступна, вопросы стандартные":""}</div></section>
+    ${SW.questions.map((q,i)=>`<div class="card stack" style="margin-top:12px;padding:16px"><b style="font-weight:700">${esc(q.q)}</b>
+      ${q.options.length?`<div class="chips">${q.options.map((o,k)=>`<button class="chip" data-q="${i}" data-o="${k}" aria-pressed="${q.picked.includes(o)}">${esc(o)}</button>`).join("")}</div>${q.multi?`<div class="small-note">Можно выбрать несколько</div>`:""}`:""}
+      <input type="text" data-qt="${i}" placeholder="${q.options.length?"Свой вариант (необязательно)":"Твой ответ"}" value="${esc(q.text||"")}"></div>`).join("")}
+    <div class="card stack" style="margin-top:12px;padding:16px"><b>Что ещё учесть?</b><textarea id="qExtra" placeholder="Например: хочу подтянуть ягодицы, не люблю бег">${esc(SW.extra||"")}</textarea></div>
+    <div class="btn-row" style="margin-top:14px"><button class="btn" id="qBack">Назад</button><button class="btn primary" id="qGo">Составить программу</button></div>
+    <div class="status" id="qwSt" hidden style="margin-top:10px"></div>`);
+  $("#view").querySelectorAll("[data-q]").forEach(b=>b.addEventListener("click",()=>{const q=SW.questions[b.dataset.q],o=q.options[b.dataset.o];
+    if(q.multi){q.picked=q.picked.includes(o)?q.picked.filter(x=>x!==o):[...q.picked,o]}else q.picked=q.picked[0]===o?[]:[o];
+    $("#view").querySelectorAll(`[data-q="${b.dataset.q}"]`).forEach(x=>x.setAttribute("aria-pressed",q.picked.includes(q.options[x.dataset.o])))}));
+  $("#view").querySelectorAll("[data-qt]").forEach(inp=>inp.addEventListener("input",()=>{SW.questions[inp.dataset.qt].text=inp.value}));
+  $("#qExtra").addEventListener("input",e=>SW.extra=e.target.value);
+  $("#qBack").addEventListener("click",()=>{SW.stage="place";render()});
+  $("#qGo").addEventListener("click",async()=>{
+    const answers=SW.questions.map(q=>({q:q.q,a:[...q.picked,(q.text||"").trim()].filter(Boolean).join(", ")}));
+    kitchenCtl?.abort();kitchenCtl=new AbortController();$("#qGo").disabled=true;setStatus($("#qwSt"),"busy","Составляю программу… до минуты");
+    try{const j=await ask({mode:"workout",place:SW.place,profile:profileForAI(),answers,extra:SW.extra||""},kitchenCtl.signal);
+      if(!j.program){setStatus($("#qwSt"),"err","Программа не получилась. Попробуй ещё раз.");return}
+      store.set("workout",{...j.program,place:SW.place,date:ds(new Date())});Object.assign(SW,{stage:null,questions:null,extra:""});render();window.scrollTo({top:0});toast("Программа готова")}
+    catch(e){if(e.name!=="AbortError")setStatus($("#qwSt"),"err",e.message)}finally{if($("#qGo"))$("#qGo").disabled=false}});
+}
+function openWorkoutDay(i){
+  const prog=getProgram(),d=prog?.days[i];if(!d)return;
+  openSheet(`<h3>${esc(d.title)}<button class="x" aria-label="Закрыть">×</button></h3><div class="stack">
+    ${prog.warmup?`<details><summary>Разминка</summary><div style="margin-top:8px">${esc(prog.warmup)}</div></details>`:""}
+    <div class="items">${d.exercises.map((e,k)=>`<label class="item" style="cursor:pointer"><div class="top"><input type="checkbox" data-ex="${k}" style="width:20px;height:20px;accent-color:var(--accent)"><b style="flex:1">${esc(e.name)}</b><span class="kcal num">${esc(e.sets)}${e.sets&&e.reps?" × ":""}${esc(e.reps)}</span></div>
+      <div class="sub">${e.rest?`Отдых ${esc(e.rest)}`:""}${e.rest&&e.tip?" · ":""}${esc(e.tip||"")}</div></label>`).join("")}</div>
+    <div class="small-note" id="exCount"></div>
+    <button class="btn primary" id="wDone">Тренировка выполнена</button></div>`);
+  const cnt=()=>{const n=$("#sheet").querySelectorAll("[data-ex]:checked").length;$("#exCount").textContent=`Сделано ${n} из ${d.exercises.length}`};
+  $("#sheet").querySelectorAll("[data-ex]").forEach(c=>c.addEventListener("change",e=>{e.target.closest(".item").style.opacity=e.target.checked?.55:1;cnt()}));cnt();
+  $("#wDone").addEventListener("click",()=>{const log=getWLog();log.push({date:ds(new Date()),day:i});store.set("wlog",log.slice(-400));closeSheet();render();toast("Отлично! Тренировка записана")});
 }
 
 /* ---------- шторка ---------- */
@@ -724,6 +906,8 @@ function openSettings(note){
   const g=S.settings;
   openSheet(`<h3>Цели и настройки<button class="x" aria-label="Закрыть">×</button></h3><div class="stack">
     ${note?`<div class="prodcard" style="background:var(--surface);color:var(--danger)">${esc(note)}</div>`:""}
+    <button class="btn primary" id="sgNorm">${g.profile?"Пересчитать мою норму":"Рассчитать мою норму"}</button>
+    ${g.profile?.auto?`<div class="small-note">Норма считается автоматически по весу (${{lose:"похудение",keep:"удержание",gain:"набор"}[g.profile.goal]}${g.profile.goal!=="keep"?", "+SPEED[g.profile.speed||"mid"].name.toLowerCase():""}). Если изменишь цифры ниже вручную — автопересчёт выключится.</div>`:""}
     <div class="grid2"><label class="field">Калории в день, ккал<input type="number" inputmode="numeric" id="sgK" value="${g.goal}"></label>
       <label class="field">Цель по весу, кг<input type="number" inputmode="decimal" step="0.1" id="sgW" value="${g.goalW??""}"></label></div>
     <div class="grid3"><label class="field">Белки, г<input type="number" inputmode="numeric" id="sgP" value="${g.p}"></label>
@@ -737,7 +921,9 @@ function openSettings(note){
       <div class="picker btn">Загрузить копию<input type="file" id="bkLoad" accept="application/json,.json" aria-label="Загрузить копию"></div></div></div>`);
   const hint=()=>{$("#sgHint").textContent=`Белки, жиры и углеводы вместе дают ${fmt(num($("#sgP").value)*4+num($("#sgF").value)*9+num($("#sgC").value)*4)} ккал`};
   ["#sgP","#sgF","#sgC"].forEach(s=>$(s).addEventListener("input",hint));hint();
-  $("#sgSave").addEventListener("click",()=>{Object.assign(S.settings,{goal:num($("#sgK").value)||2000,goalW:num($("#sgW").value)||null,p:num($("#sgP").value),f:num($("#sgF").value),c:num($("#sgC").value)});
+  $("#sgNorm").addEventListener("click",openNorm);
+  $("#sgSave").addEventListener("click",()=>{const before=[g.goal,g.p,g.f,g.c].join();Object.assign(S.settings,{goal:num($("#sgK").value)||2000,goalW:num($("#sgW").value)||null,p:num($("#sgP").value),f:num($("#sgF").value),c:num($("#sgC").value)});
+    if(S.settings.profile?.auto&&[S.settings.goal,S.settings.p,S.settings.f,S.settings.c].join()!==before)S.settings.profile.auto=false;
     const code=$("#sgCode").value.trim();code?store.set("appCode",code):store.del("appCode");saveSettings();render();closeSheet();toast("Сохранено")});
   $("#bkSave").addEventListener("click",()=>{const data={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith("kbju:")&&k!=="kbju:appCode")data[k]=localStorage.getItem(k)}
     const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));a.download=`kbju-${ds(new Date())}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)});
@@ -751,13 +937,14 @@ function askCode(wrong){openSettings(wrong?"Код доступа не подо�
 function openAdd(mode,meal){meal=meal||defaultMeal();mode==="photo"?openPhoto(meal):mode==="barcode"?openBarcode(meal):openManual(meal)}
 document.querySelectorAll("[data-add]").forEach(b=>b.addEventListener("click",()=>openAdd(b.dataset.add)));
 document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{S.tab=b.dataset.tab;if(S.tab!=="day"&&S.tab!=="week")S.date=ds(new Date());S.tab==="day"?loadDay():render();window.scrollTo({top:0})}));
-$("#view").addEventListener("click",e=>{const a=e.target.closest("[data-addmeal]");if(a)return openAdd("photo",a.dataset.addmeal);const en=e.target.closest("[data-entry]");if(en)openEdit(en.dataset.entry)});
+$("#view").addEventListener("click",e=>{const act=e.target.closest("[data-act]")?.dataset.act;if(act==="norm")return openNorm();if(act==="review-day")return openReview("day");if(act==="review-week")return openReview("week");const a=e.target.closest("[data-addmeal]");if(a)return openAdd("photo",a.dataset.addmeal);const en=e.target.closest("[data-entry]");if(en)openEdit(en.dataset.entry)});
 $("#openSettings").addEventListener("click",()=>openSettings());
 function shift(n){const nd=addDays(S.date,n*(S.tab==="week"?7:1));const t=ds(new Date());S.date=nd>t?t:nd;loadDay()}
 $("#prevDay").addEventListener("click",()=>shift(-1));$("#nextDay").addEventListener("click",()=>shift(1));
 document.addEventListener("visibilitychange",()=>{if(document.hidden)stopScan?.()});
 
 S.settings={...S.settings,...(store.get("settings")||{})};
+applyAutoNorm();
 loadDay();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 </script>
