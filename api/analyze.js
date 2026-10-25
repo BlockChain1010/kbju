@@ -19,6 +19,17 @@ function pantryText(p) {
   return arr.length ? arr.join(", ") : "ничего не указано";
 }
 
+function profileText(p) {
+  if (!p || typeof p !== "object") return "ничего";
+  const parts = [];
+  if (p.sex) parts.push(p.sex === "f" ? "женщина" : "мужчина");
+  if (p.age) parts.push(`${parseInt(p.age)} лет`);
+  if (p.height) parts.push(`рост ${parseInt(p.height)} см`);
+  if (p.weight) parts.push(`вес ${num(p.weight)} кг`);
+  if (p.goal) parts.push(`цель по питанию: ${clip(p.goal, 40)}`);
+  return parts.length ? parts.join(", ") : "ничего";
+}
+
 function promptFor(b) {
   const extra = b.note ? `\nУточнение от пользователя: ${clip(b.note, 300)}` : "";
   const wish = b.wish ? `\nПожелания: ${clip(b.wish, 300)}` : "";
@@ -53,6 +64,29 @@ ${RECIPE_RULES}
 ${RECIPE_RULES}
 Ответь только JSON: {"recipes":[${RECIPE_SHAPE}]}`;
     }
+    case "review": {
+      const isWeek = b.scope === "week";
+      const live = !isWeek && b.isToday ? `\nСейчас ${parseInt(b.hour) || 12}:00, день ещё не закончился — учитывай, что впереди ещё приёмы пищи, и подскажи, как добрать или уложиться до конца дня.` : "";
+      return `Ты внимательный и доброжелательный нутрициолог. Разбери рацион пользователя за ${isWeek ? "последние 7 дней" : "день"}.
+Данные (калории в ккал, БЖУ в граммах): ${clip(JSON.stringify(b.data || {}), 9000)}${live}
+Оцени баланс калорий, белков, жиров и углеводов относительно цели, качество продуктов, распределение по приёмам пищи${isWeek ? ", стабильность по дням" : ""}.
+Советы — конкретные: какие продукты добавить или заменить, с примерами блюд и граммами. Не советуй есть меньше нормы и не предлагай голодать. Если записей мало — так и скажи и дай общий совет.
+Ответь только JSON: {"verdict":"итог в 1–2 предложениях","good":["что получается хорошо"],"fix":["что поправить"],"next":["${isWeek ? "план на следующую неделю" : (b.isToday ? "что съесть до конца дня" : "что съесть завтра")}"]}
+До 4 пунктов в каждом списке, каждый пункт — одно-два коротких предложения. По-русски, обращайся на «ты».`;
+    }
+    case "wq":
+      return `Ты фитнес-тренер. Пользователь хочет программу тренировок ${b.place === "home" ? "дома" : "в тренажёрном зале"}.
+Что известно: ${profileText(b.profile)}.
+Задай 5–7 самых важных вопросов, чтобы составить подходящую программу. Обязательно спроси: уровень подготовки, сколько дней в неделю готов заниматься, сколько времени на одну тренировку, главная цель, есть ли травмы или ограничения${b.place === "home" ? ", какой инвентарь есть дома" : ""}. Не спрашивай то, что уже известно.
+Для каждого вопроса дай 2–6 коротких вариантов ответа. "multi": true, если можно выбрать несколько.
+Ответь только JSON: {"questions":[{"q":"Сколько дней в неделю готов заниматься?","options":["2","3","4","5"],"multi":false}]}. По-русски.`;
+    case "workout":
+      return `Ты опытный фитнес-тренер. Составь программу тренировок ${b.place === "home" ? "дома" : "в тренажёрном зале"}.
+Профиль: ${profileText(b.profile)}.
+Ответы на вопросы: ${clip((Array.isArray(b.answers) ? b.answers : []).map((x) => `${clip(x?.q, 150)} — ${clip(x?.a, 200) || "без ответа"}`).join("; "), 3000)}.${b.extra ? `\nДополнительно: ${clip(b.extra, 500)}` : ""}
+Требования: число тренировочных дней — как в ответах; упражнения безопасны для уровня; если есть травмы — исключи нагрузку на эту зону и добавь в notes совет показаться врачу; ${b.place === "home" ? "используй только инвентарь, который есть" : "используй обычное оборудование зала"}; 4–7 упражнений в дне; короткая разминка.
+Ответь только JSON: {"name":"Название программы","daysPerWeek":3,"warmup":"разминка в 1–3 предложениях","days":[{"title":"День 1 · Всё тело","exercises":[{"name":"Приседания с гантелями","sets":3,"reps":"10–12","rest":"60–90 сек","tip":"подсказка по технике"}]}],"progression":"как увеличивать нагрузку","notes":["советы"]}
+По-русски.`;
     default:
       return `Ты нутрициолог. На фото либо еда (тарелка, блюдо, перекус), либо упаковка продукта.
 Если видна таблица пищевой ценности на упаковке, бери цифры на 100 г прямо с неё, название с упаковки, вес — массу нетто, если видна, иначе 100. Для такого продукта "source":"label".
@@ -118,6 +152,29 @@ function shape(mode, raw) {
       return { recipe: cleanRecipe(raw?.recipe || raw) };
     case "menu":
       return { recipes: (Array.isArray(raw?.recipes) ? raw.recipes : []).map(cleanRecipe).filter(Boolean).slice(0, 6) };
+    case "review": {
+      const list = (k) => (Array.isArray(raw?.[k]) ? raw[k] : []).map((x) => clip(x, 400)).filter(Boolean).slice(0, 5);
+      return { review: { verdict: clip(raw?.verdict, 500), good: list("good"), fix: list("fix"), next: list("next") } };
+    }
+    case "wq":
+      return { questions: (Array.isArray(raw?.questions) ? raw.questions : []).map((x) => ({
+        q: clip(x?.q, 200),
+        options: (Array.isArray(x?.options) ? x.options : []).map((o) => clip(o, 60)).filter(Boolean).slice(0, 8),
+        multi: !!x?.multi,
+      })).filter((x) => x.q).slice(0, 8) };
+    case "workout": {
+      const days = (Array.isArray(raw?.days) ? raw.days : []).map((d, i) => ({
+        title: clip(d?.title || `День ${i + 1}`, 80),
+        exercises: (Array.isArray(d?.exercises) ? d.exercises : []).map((e) => ({
+          name: clip(e?.name, 80), sets: clip(e?.sets, 10), reps: clip(e?.reps, 20), rest: clip(e?.rest, 30), tip: clip(e?.tip, 240),
+        })).filter((e) => e.name).slice(0, 10),
+      })).filter((d) => d.exercises.length).slice(0, 7);
+      return { program: days.length ? {
+        name: clip(raw?.name || "Моя программа", 80), daysPerWeek: Math.round(num(raw?.daysPerWeek)) || days.length,
+        warmup: clip(raw?.warmup, 600), progression: clip(raw?.progression, 600),
+        notes: (Array.isArray(raw?.notes) ? raw.notes : []).map((x) => clip(x, 300)).filter(Boolean).slice(0, 6), days,
+      } : null };
+    }
     default:
       return { items: cleanItems(raw) };
   }
@@ -151,7 +208,7 @@ async function callGemini(key, model, parts) {
   return (body?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
 }
 
-const MODES = ["photo", "text", "pantry", "ideas", "recipe", "menu"];
+const MODES = ["photo", "text", "pantry", "ideas", "recipe", "menu", "review", "wq", "workout"];
 
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
