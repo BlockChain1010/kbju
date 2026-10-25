@@ -184,7 +184,7 @@ details summary{cursor:pointer;color:var(--accent);font-weight:700;font-size:14.
       <button role="tab" data-tab="day" aria-selected="true">День</button>
       <button role="tab" data-tab="week" aria-selected="false">Неделя</button>
       <button role="tab" data-tab="weight" aria-selected="false">Вес</button>
-      <button role="tab" data-tab="recipes" aria-selected="false">Рецепты</button>
+      <button role="tab" data-tab="recipes" aria-selected="false">Кухня</button>
     </nav>
   </header>
   <main id="view"></main>
@@ -242,7 +242,7 @@ function totals(list){return list.reduce((t,e)=>{const v=calc(e.per100,e.grams);
 function header(){
   const h=new Date().getHours();
   $("#greetSmall").textContent=h<5?"Доброй ночи":h<12?"Доброе утро":h<18?"Добрый день":"Добрый вечер";
-  $("#greetBig").textContent={day:"Дневник",week:"Неделя",weight:"Вес",recipes:"Рецепты"}[S.tab];
+  $("#greetBig").textContent={day:"Дневник",week:"Неделя",weight:"Вес",recipes:"Кухня"}[S.tab];
   const today=ds(new Date()),y=addDays(today,-1);
   $("#dateNav").hidden=!(S.tab==="day"||S.tab==="week");
   $("#dateLabel").textContent=S.tab==="week"?`до ${S.date===today?"сегодня":shortDate(S.date)}`:
@@ -271,7 +271,7 @@ function renderDay(){
     return `<div class="sec-title">${name}<span class="sum num">${list.length?fmt(totals(list).k)+" ккал":""}</span><button class="plus" data-addmeal="${id}" aria-label="Добавить в ${name.toLowerCase()}">+</button></div>
     ${list.length?`<div class="list">${list.map(e=>{const v=calc(e.per100,e.grams);return `<button class="entry" data-entry="${e.id}"><div class="nm"><div>${esc(e.name)}</div>
       <small class="num">${fmt(e.grams)} г · Б ${fmt1(v.p)} · Ж ${fmt1(v.f)} · У ${fmt1(v.c)}</small></div><div class="kc num">${fmt(v.k)}<small>ккал</small></div></button>`}).join("")}</div>`:`<div class="empty">Пока пусто</div>`}`}).join("")}
-  ${!S.day.entries.length&&S.date===today?`<div class="hint"><b>Добавь первую еду.</b> Сфоткай тарелку или этикетку, отсканируй штрих-код или выбери свой рецепт — калории посчитаются сами.</div>`:""}`);
+  ${!S.day.entries.length&&S.date===today?`<div class="hint"><b>Добавь первую еду.</b> Сфоткай тарелку или этикетку, отсканируй штрих-код или выбери свой рецепт — калории посчитаются сами. Не знаешь, что приготовить? Загляни во вкладку «Кухня».</div>`:""}`);
 }
 
 /* ---------- Неделя ---------- */
@@ -344,14 +344,139 @@ function renderWeight(){
 /* ---------- Рецепты ---------- */
 function recipePer100(r){const t=r.ingredients.reduce((s,i)=>{const v=calc(i.per100,i.grams);s.k+=v.k;s.p+=v.p;s.f+=v.f;s.c+=v.c;s.g+=i.grams;return s},{k:0,p:0,f:0,c:0,g:0});
   const W=r.cooked||t.g||1;return{per100:{k:r1(t.k/W*100),p:r1(t.p/W*100),f:r1(t.f/W*100),c:r1(t.c/W*100)},raw:t.g,total:t}}
+/* ---------- Кухня: что есть дома, идеи, рецепты, меню, покупки ---------- */
+const getPantry=()=>store.get("pantry")||[];
+const savePantry=p=>store.set("pantry",p);
+const getShop=()=>store.get("shopping")||[];
+const saveShop=s=>store.set("shopping",s);
+const K={ideas:null};
+function addToPantry(names){const p=getPantry(),low=new Set(p.map(x=>x.toLowerCase()));let n=0;
+  names.map(x=>String(x).trim()).filter(Boolean).forEach(x=>{if(!low.has(x.toLowerCase())){p.push(x);low.add(x.toLowerCase());n++}});savePantry(p);return n}
+function addToShop(items){const s=getShop();let n=0;
+  items.forEach(it=>{const nm=String(it.name).trim();if(!nm)return;const ex=s.find(x=>!x.done&&x.name.toLowerCase()===nm.toLowerCase());
+    if(ex){ex.grams=(ex.grams||0)+(it.grams||0)}else{s.push({id:uid(),name:nm,grams:it.grams||0,done:false});n++}});saveShop(s);return n}
+function genToRecipe(g){return{id:uid(),name:g.name,servings:g.servings,minutes:g.minutes,steps:g.steps||[],cooked:g.cookedWeight||null,
+  ingredients:g.ingredients.filter(i=>i.grams>0).map(i=>({name:i.name,grams:i.grams,per100:{k:i.kcal100,p:i.protein100,f:i.fat100,c:i.carbs100}}))}}
+function gramsText(g){return g>=1000?`${fmt1(g/1000)} кг`:g?`${fmt(g)} г`:""}
+async function ask(payload,signal){
+  const code=store.get("appCode");let res;
+  try{res=await fetch("/api/analyze",{method:"POST",signal,headers:{"Content-Type":"application/json",...(code?{"x-app-code":code}:{})},body:JSON.stringify(payload)})}
+  catch(e){if(e.name==="AbortError")throw e;throw new Error("Нет связи с сервером. Проверь интернет или включи VPN.")}
+  const j=await res.json().catch(()=>({}));
+  if(res.status===401&&j.needCode){askCode(!!code);throw new Error("Нужен код доступа.")}
+  if(!res.ok)throw new Error(j.error||"Сервер ответил ошибкой. Попробуй ещё раз.");
+  return j;
+}
+let kitchenCtl=null;
+function kitchenBusy(btn,stEl,text){kitchenCtl?.abort();kitchenCtl=new AbortController();if(btn)btn.disabled=true;setStatus(stEl,"busy",text);return kitchenCtl.signal}
 function renderRecipes(){
-  const rs=getRecipes();
-  setView(`<button class="btn primary" id="rNew" style="width:100%">+ Новый рецепт</button>
-    ${rs.length?`<div class="list" style="margin-top:14px">${rs.map(r=>{const p=recipePer100(r).per100;return `<button class="entry" data-recipe="${r.id}"><div class="nm"><div>${esc(r.name)}</div>
+  const pantry=getPantry(),shop=getShop(),rs=getRecipes(),menu=store.get("lastMenu"),wish=store.get("wish")||"",serv=store.get("servings")||2;
+  const left=shop.filter(x=>!x.done).length;
+  setView(`<section class="card stack">
+      <div class="sec-title" style="margin:0">Что есть дома<span class="sum num">${pantry.length||""}</span></div>
+      ${pantry.length?`<div class="chips">${pantry.map((x,i)=>`<button class="chip" data-prm="${i}" aria-label="Убрать ${esc(x)}">${esc(x)} <span style="color:var(--muted)">×</span></button>`).join("")}</div>`:`<div class="empty">Сфоткай холодильник или впиши продукты — подскажу, что из них приготовить.</div>`}
+      ${photoPicker("pantryFile","Сфоткать холодильник",!pantry.length)}
+      <div class="grid2"><input type="text" id="pantryIn" placeholder="или впиши: яйца, сыр, курица"><button class="btn" id="pantryAdd">Добавить</button></div>
+      <div class="status" id="pantrySt" hidden></div>
+      ${pantry.length?`<button class="btn small" id="pantryClear" style="justify-self:start">Очистить список</button>`:""}
+    </section>
+    <section class="card stack" style="margin-top:12px">
+      <div class="sec-title" style="margin:0">Что приготовить</div>
+      <div class="grid2"><label class="field">Пожелания<input type="text" id="wishIn" value="${esc(wish)}" placeholder="Побольше белка, до 500 ккал"></label>
+        <label class="field">Порций<input type="number" inputmode="numeric" id="servIn" value="${serv}" min="1" max="12"></label></div>
+      <button class="btn primary" id="ideasGo">Идеи из того, что есть</button>
+      <div class="status" id="ideasSt" hidden></div><div id="ideasBox" class="items"></div>
+      <label class="field">Или рецепт по запросу<input type="text" id="qIn" placeholder="Например: сытный ужин с курицей и брокколи"></label>
+      <button class="btn" id="qGo">Составить рецепт</button><div class="status" id="qSt" hidden></div>
+    </section>
+    <section class="card stack" style="margin-top:12px">
+      <div class="sec-title" style="margin:0">Меню на неделю</div>
+      <div class="small-note">Несколько блюд, которые можно приготовить заранее и хранить 2–4 дня, плюс общий список покупок. Учитывает продукты, пожелания и число порций выше.</div>
+      <div class="chips" role="group" aria-label="Сколько блюд">${[3,4,5].map(n=>`<button class="chip" data-mcount="${n}" aria-pressed="${n===(store.get("menuCount")||4)}">${n} блюда</button>`).join("").replace("5 блюда","5 блюд")}</div>
+      <button class="btn primary" id="menuGo">Составить меню</button><div class="status" id="menuSt" hidden></div>
+      <div id="menuBox">${menu?menuHTML(menu):""}</div>
+    </section>
+    <div class="sec-title">Список покупок<span class="sum num">${left?left+" осталось":""}</span></div>
+    ${shop.length?`<div class="list">${shop.map(x=>`<label class="ing" style="cursor:pointer;${x.done?"opacity:.5;text-decoration:line-through":""}"><input type="checkbox" data-shop="${x.id}" ${x.done?"checked":""} style="width:19px;height:19px;accent-color:var(--accent)"><span>${esc(x.name)}</span><small class="num">${gramsText(x.grams)}</small><button data-shrm="${x.id}" aria-label="Убрать">×</button></label>`).join("")}</div>`:`<div class="empty">Пока пусто. Добавь продукты из рецепта или впиши вручную.</div>`}
+    <div class="grid2" style="margin-top:10px"><input type="text" id="shopIn" placeholder="Добавить: хлеб"><button class="btn" id="shopAdd">Добавить</button></div>
+    ${shop.length?`<div class="btn-row" style="margin-top:8px"><button class="btn small" id="shopCopy">Скопировать список</button><button class="btn small" id="shopClean">Убрать купленное</button></div>`:""}
+    <div class="sec-title">Мои рецепты</div>
+    <button class="btn" id="rNew" style="width:100%">+ Свой рецепт вручную</button>
+    ${rs.length?`<div class="list" style="margin-top:10px">${rs.map(r=>{const p=recipePer100(r).per100;return `<button class="entry" data-recipe="${r.id}"><div class="nm"><div>${esc(r.name)}</div>
       <small class="num">на 100 г: Б ${fmt1(p.p)} · Ж ${fmt1(p.f)} · У ${fmt1(p.c)}</small></div><div class="kc num">${fmt(p.k)}<small>ккал/100 г</small></div></button>`}).join("")}</div>`:
-    `<div class="hint"><b>Готовишь заранее?</b> Внеси продукты кастрюли один раз и взвесь готовое блюдо — приложение посчитает калории на 100 г. Потом просто добавляешь порцию по весу.</div>`}`);
+    `<div class="hint"><b>Готовишь заранее?</b> Сохрани рецепт из идей или меню, либо внеси свою кастрюлю вручную — калории на 100 г посчитаются сами, а порцию потом добавишь по весу.</div>`}`);
+  const V=$("#view");
+  // что есть дома
+  V.querySelectorAll("[data-prm]").forEach(b=>b.addEventListener("click",()=>{const p=getPantry();p.splice(+b.dataset.prm,1);savePantry(p);render()}));
+  $("#pantryAdd").addEventListener("click",()=>{const v=$("#pantryIn").value;if(!v.trim())return;addToPantry(v.split(/[,;\n]+/));render()});
+  $("#pantryIn").addEventListener("keydown",e=>{if(e.key==="Enter")$("#pantryAdd").click()});
+  $("#pantryClear")?.addEventListener("click",()=>{savePantry([]);render()});
+  $("#pantryFile").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;const sig=kitchenBusy(null,$("#pantrySt"),"Смотрю, что в холодильнике…");
+    try{const j=await ask({mode:"pantry",image:await shrink(f),mime:"image/jpeg"},sig);const n=addToPantry(j.products||[]);
+      if(!(j.products||[]).length){setStatus($("#pantrySt"),"err","Не разглядел продукты. Сфоткай ближе и при свете.");return}
+      render();toast(n?`Добавлено продуктов: ${n}. Проверь список`:"Новых продуктов не нашёл")}
+    catch(err){if(err.name!=="AbortError")setStatus($("#pantrySt"),"err",err.message)}});
+  // настройки генерации
+  const prefs=()=>{const w=$("#wishIn").value.trim(),s=Math.min(12,Math.max(1,r0(num($("#servIn").value))||2));store.set("wish",w);store.set("servings",s);return{wish:w,servings:s}};
+  // идеи
+  if(K.ideas)drawIdeas(K.ideas);
+  $("#ideasGo").addEventListener("click",async()=>{const pr=prefs();if(!getPantry().length){toast("Сначала добавь, что есть дома");$("#pantryIn").focus();return}
+    const sig=kitchenBusy($("#ideasGo"),$("#ideasSt"),"Придумываю блюда… 5–15 секунд");$("#ideasBox").innerHTML="";
+    try{const j=await ask({mode:"ideas",pantry:getPantry(),...pr},sig);K.ideas=j.ideas||[];setStatus($("#ideasSt"),K.ideas.length?"":"err",K.ideas.length?"":"Не получилось придумать. Попробуй ещё раз.");drawIdeas(K.ideas)}
+    catch(err){if(err.name!=="AbortError")setStatus($("#ideasSt"),"err",err.message)}finally{if($("#ideasGo"))$("#ideasGo").disabled=false}});
+  function drawIdeas(list){$("#ideasBox").innerHTML=list.map((x,i)=>`<div class="item"><div class="top"><b style="flex:1">${esc(x.name)}</b><button class="btn small primary" data-idea="${i}">Рецепт</button></div>
+      ${x.about?`<div class="sub">${esc(x.about)}</div>`:""}<div class="sub num">${[x.kcalPerServing?`≈ ${fmt(x.kcalPerServing)} ккал на порцию`:"",x.minutes?`${x.minutes} мин`:""].filter(Boolean).join(" · ")}</div>
+      ${x.missing?.length?`<div class="sub">Не хватает: ${esc(x.missing.join(", "))}</div>`:`<div class="sub" style="color:var(--accent)">Всё есть дома</div>`}</div>`).join("");
+    $("#ideasBox").querySelectorAll("[data-idea]").forEach(b=>b.addEventListener("click",()=>{const x=list[b.dataset.idea];makeRecipe(`${x.name}. ${x.about||""}`,b,$("#ideasSt"))}))}
+  // рецепт по запросу
+  $("#qGo").addEventListener("click",()=>{const q=$("#qIn").value.trim();if(!q){$("#qIn").focus();return}makeRecipe(q,$("#qGo"),$("#qSt"))});
+  async function makeRecipe(query,btn,stEl){const pr=prefs();const sig=kitchenBusy(btn,stEl,"Составляю рецепт… 10–20 секунд");
+    try{const j=await ask({mode:"recipe",query,pantry:getPantry(),...pr},sig);if(!j.recipe){setStatus(stEl,"err","Рецепт не получился. Попробуй ещё раз.");return}
+      setStatus(stEl,"","");openGenRecipe(j.recipe)}
+    catch(err){if(err.name!=="AbortError")setStatus(stEl,"err",err.message)}finally{if(btn)btn.disabled=false}}
+  // меню
+  V.querySelectorAll("[data-mcount]").forEach(b=>b.addEventListener("click",()=>{store.set("menuCount",+b.dataset.mcount);V.querySelectorAll("[data-mcount]").forEach(x=>x.setAttribute("aria-pressed",x===b))}));
+  $("#menuGo").addEventListener("click",async()=>{const pr=prefs();const sig=kitchenBusy($("#menuGo"),$("#menuSt"),"Составляю меню… это может занять до минуты");
+    try{const j=await ask({mode:"menu",pantry:getPantry(),count:store.get("menuCount")||4,...pr},sig);
+      if(!j.recipes?.length){setStatus($("#menuSt"),"err","Меню не получилось. Попробуй ещё раз.");return}
+      const m={date:ds(new Date()),recipes:j.recipes};store.set("lastMenu",m);setStatus($("#menuSt"),"","");$("#menuBox").innerHTML=menuHTML(m);wireMenu(m)}
+    catch(err){if(err.name!=="AbortError")setStatus($("#menuSt"),"err",err.message)}finally{if($("#menuGo"))$("#menuGo").disabled=false}});
+  if(menu)wireMenu(menu);
+  // покупки
+  V.querySelectorAll("[data-shop]").forEach(c=>c.addEventListener("change",()=>{const s=getShop(),x=s.find(y=>y.id===c.dataset.shop);if(x){x.done=c.checked;saveShop(s);render()}}));
+  V.querySelectorAll("[data-shrm]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();saveShop(getShop().filter(y=>y.id!==b.dataset.shrm));render()}));
+  $("#shopAdd").addEventListener("click",()=>{const v=$("#shopIn").value.trim();if(!v)return;addToShop(v.split(/[,;\n]+/).map(name=>({name,grams:0})));render()});
+  $("#shopIn").addEventListener("keydown",e=>{if(e.key==="Enter")$("#shopAdd").click()});
+  $("#shopClean")?.addEventListener("click",()=>{saveShop(getShop().filter(x=>!x.done));render()});
+  $("#shopCopy")?.addEventListener("click",()=>{const t=getShop().filter(x=>!x.done).map(x=>`— ${x.name}${x.grams?` (${gramsText(x.grams)})`:""}`).join("\n");
+    if(!t){toast("Всё уже куплено");return}navigator.clipboard?.writeText(t).then(()=>toast("Список скопирован — вставь в мессенджер"),()=>toast("Не удалось скопировать"))});
+  // мои рецепты
   $("#rNew").addEventListener("click",()=>openRecipeEditor());
-  $("#view").querySelectorAll("[data-recipe]").forEach(b=>b.addEventListener("click",()=>openRecipeUse(b.dataset.recipe)));
+  V.querySelectorAll("[data-recipe]").forEach(b=>b.addEventListener("click",()=>openRecipeUse(b.dataset.recipe)));
+}
+function genStats(g){const t=g.ingredients.reduce((s,i)=>{s.k+=i.kcal100*i.grams/100;s.g+=i.grams;return s},{k:0,g:0});return{kServ:t.k/(g.servings||1),k100:t.k/((g.cookedWeight||t.g)||1)*100}}
+function menuHTML(m){return `<div class="items">${m.recipes.map((g,i)=>{const s=genStats(g);return `<button class="item" data-mr="${i}" style="text-align:left;border:0;width:100%"><div class="top"><b style="flex:1">${esc(g.name)}</b><span class="kcal num">${fmt(s.kServ)} ккал</span></div>
+    <div class="sub num">${g.servings} порц.${g.minutes?` · ${g.minutes} мин`:""} · на порцию · не хватает: ${g.ingredients.filter(x=>!x.have).length}</div></button>`}).join("")}</div>
+  <div class="btn-row" style="margin-top:4px"><button class="btn small" id="menuSaveAll">Сохранить все в рецепты</button><button class="btn small primary" id="menuShop">Недостающее в покупки</button></div>
+  <div class="small-note">Составлено ${shortDate(m.date)}. Нажми на блюдо, чтобы открыть рецепт.</div>`}
+function wireMenu(m){
+  $("#menuBox").querySelectorAll("[data-mr]").forEach(b=>b.addEventListener("click",()=>openGenRecipe(m.recipes[b.dataset.mr])));
+  $("#menuSaveAll").addEventListener("click",()=>{const all=getRecipes();m.recipes.forEach(g=>{if(!all.some(r=>r.name===g.name))all.unshift(genToRecipe(g))});saveRecipes(all);toast("Рецепты сохранены");render()});
+  $("#menuShop").addEventListener("click",()=>{const n=addToShop(m.recipes.flatMap(g=>g.ingredients.filter(i=>!i.have)));toast(n?`В покупки добавлено: ${n}`:"Всё нужное уже в списке");render()});
+}
+function openGenRecipe(g){
+  const s=genStats(g),need=g.ingredients.filter(i=>!i.have);
+  openSheet(`<h3>${esc(g.name)}<button class="x" aria-label="Закрыть">×</button></h3><div class="stack">
+    <div class="prodcard num"><b>≈ ${fmt(s.kServ)} ккал на порцию</b> · ${g.servings} порц.${g.minutes?` · ${g.minutes} мин`:""}<br><span class="small-note">${fmt(s.k100)} ккал на 100 г готового блюда</span></div>
+    <div class="sec-title" style="margin:4px 2px 0">Продукты</div>
+    <div class="list">${g.ingredients.map(i=>`<div class="ing"><span>${esc(i.name)} <small class="num">${gramsText(i.grams)}</small></span><small style="color:${i.have?"var(--accent)":"var(--carb)"}">${i.have?"есть":"купить"}</small></div>`).join("")}</div>
+    ${g.steps?.length?`<div class="sec-title" style="margin:4px 2px 0">Как готовить</div><ol style="margin:0;padding-left:22px;display:grid;gap:8px">${g.steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}
+    <button class="btn primary" id="grSave">Сохранить в мои рецепты</button>
+    <div class="btn-row"><button class="btn small" id="grNeed" ${need.length?"":"disabled"}>Недостающее в покупки${need.length?` (${need.length})`:""}</button><button class="btn small" id="grAll">Всё в покупки</button></div>
+    <div class="small-note">Калории посчитаны по сырым продуктам и примерному весу готового блюда. После готовки можно взвесить кастрюлю и поправить вес в рецепте.</div></div>`);
+  $("#grSave").addEventListener("click",()=>{const all=getRecipes();const r=genToRecipe(g);all.unshift(r);saveRecipes(all);closeSheet();toast("Рецепт сохранён в «Мои рецепты»");if(S.tab==="recipes")render()});
+  $("#grNeed").addEventListener("click",()=>{const n=addToShop(need);toast(n?`В покупки добавлено: ${n}`:"Уже в списке");if(S.tab==="recipes")render()});
+  $("#grAll").addEventListener("click",()=>{const n=addToShop(g.ingredients.filter(i=>i.grams>0));toast(n?`В покупки добавлено: ${n}`:"Уже в списке");if(S.tab==="recipes")render()});
 }
 function openRecipeEditor(id){
   const rs=getRecipes(), src=id?rs.find(r=>r.id===id):null;
@@ -394,7 +519,10 @@ function openRecipeUse(id,meal){
     <div class="prodcard num">На 100 г: <b>${fmt(p.k)} ккал</b> · Б ${fmt1(p.p)} · Ж ${fmt1(p.f)} · У ${fmt1(p.c)}</div>
     <label class="field">Сколько съел, г<input type="number" inputmode="decimal" id="ruG" value="${r.lastPortion||250}"></label>
     <div class="total-line"><span>Порция</span><span class="num" id="ruT"></span></div>
-    <button class="btn primary" id="ruAdd">Добавить в дневник</button><button class="btn" id="ruEdit">Изменить рецепт</button></div>`);
+    <button class="btn primary" id="ruAdd">Добавить в дневник</button>
+    ${r.steps?.length?`<details><summary>Как готовить${r.minutes?` · ${r.minutes} мин`:""}</summary><ol style="margin:10px 0 0;padding-left:22px;display:grid;gap:8px">${r.steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol></details>`:""}
+    <div class="btn-row"><button class="btn small" id="ruShop">Продукты в покупки</button><button class="btn small" id="ruEdit">Изменить рецепт</button></div></div>`);
+  $("#ruShop").addEventListener("click",()=>{const n=addToShop(r.ingredients);toast(n?`В покупки добавлено: ${n}`:"Уже в списке");if(S.tab==="recipes")render()});
   wireMealChips(st);
   const upd=()=>{const v=calc(p,num($("#ruG").value));$("#ruT").textContent=`${fmt(v.k)} ккал · Б ${fmt1(v.p)} · Ж ${fmt1(v.f)} · У ${fmt1(v.c)}`};$("#ruG").addEventListener("input",upd);upd();
   $("#ruEdit").addEventListener("click",()=>openRecipeEditor(id));
@@ -436,12 +564,7 @@ async function shrink(file){
   return url.split(",")[1];
 }
 async function analyze(payload,signal){
-  const code=store.get("appCode");let res;
-  try{res=await fetch("/api/analyze",{method:"POST",signal,headers:{"Content-Type":"application/json",...(code?{"x-app-code":code}:{})},body:JSON.stringify(payload)})}
-  catch(e){if(e.name==="AbortError")throw e;throw new Error("Нет связи с сервером. Проверь интернет или включи VPN.")}
-  const j=await res.json().catch(()=>({}));
-  if(res.status===401&&j.needCode){askCode(!!code);throw new Error("Нужен код доступа.")}
-  if(!res.ok)throw new Error(j.error||"Сервер ответил ошибкой. Попробуй ещё раз.");
+  const j=await ask(payload,signal);
   return (j.items||[]).map(x=>({name:x.name,grams:x.grams,source:x.source,per100:{k:num(x.kcal100),p:num(x.protein100),f:num(x.fat100),c:num(x.carbs100)},on:true}));
 }
 
